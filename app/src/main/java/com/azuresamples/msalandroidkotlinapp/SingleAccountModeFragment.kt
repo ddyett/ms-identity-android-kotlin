@@ -2,6 +2,7 @@ package com.azuresamples.msalandroidkotlinapp
 
 import android.app.Activity
 import android.content.Context
+import android.os.AsyncTask
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -10,6 +11,10 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.android.volley.Response
+import com.microsoft.graph.logger.DefaultLogger
+import com.microsoft.graph.logger.LoggerLevel
+import com.microsoft.graph.models.extensions.IGraphServiceClient
+import com.microsoft.graph.requests.extensions.GraphServiceClient
 import com.microsoft.identity.client.*
 import com.microsoft.identity.client.exception.MsalClientException
 import com.microsoft.identity.client.exception.MsalException
@@ -17,6 +22,7 @@ import com.microsoft.identity.client.exception.MsalServiceException
 import com.microsoft.identity.client.exception.MsalUiRequiredException
 import kotlinx.android.synthetic.main.fragment_single_account_mode.*
 import org.json.JSONObject
+import java.lang.ref.WeakReference
 
 class SingleAccountModeFragment : Fragment() {
     private val TAG = SingleAccountModeFragment::class.java.simpleName
@@ -52,7 +58,7 @@ class SingleAccountModeFragment : Fragment() {
                 }
 
                 override fun onError(exception: MsalException) {
-                    txt_log.text = exception.toString()
+                    txt_log.setText(exception.toString())
                 }
             })
 
@@ -181,7 +187,7 @@ class SingleAccountModeFragment : Fragment() {
             }
 
             override fun onError(exception: MsalException) {
-                txt_log.text = exception.toString()
+                txt_log.setText(exception.toString())
             }
         })
     }
@@ -262,22 +268,50 @@ class SingleAccountModeFragment : Fragment() {
     }
 
     /**
+     * This companion object is used to run calls through the Graph SDK asynchronously
+     * This is needed because the Graph Java SDK runs the OKHttpClient synchronously
+     * but Android does not doing network calls on the main thread.
+     */
+    companion object {
+        class GraphAsync(context: SingleAccountModeFragment) : AsyncTask<String, String, String>() {
+
+            private val activityReference: WeakReference<SingleAccountModeFragment> = WeakReference(context)
+
+            override fun doInBackground(vararg p0: String?): String {
+                val authProvider = SimpleAuthProvider(p0[0]!!)
+
+                val logger: DefaultLogger = DefaultLogger()
+                logger.loggingLevel = LoggerLevel.DEBUG
+
+                return try {
+                    val graphClient: IGraphServiceClient =
+                        GraphServiceClient.builder().authenticationProvider(authProvider)
+                            .logger(logger)
+                            .buildClient()
+
+                    val response = graphClient.customRequest(p0[1]).buildRequest().get()
+                    response.toString()
+
+                } catch (e: Exception) {
+                    e.message!!
+                }
+            }
+
+            override fun onPostExecute(result: String?) {
+                super.onPostExecute(result)
+                val activity = activityReference.get() ?: return
+
+                result?.let { activity.displayGraphResult(it) }
+            }
+        }
+    }
+
+    /**
      * Make an HTTP request to obtain MSGraph data
      */
     private fun callGraphAPI(authenticationResult: IAuthenticationResult) {
-        MSGraphRequestWrapper.callGraphAPIWithVolley(
-            context as Context,
-            msgraph_url.text.toString(),
-            authenticationResult.accessToken,
-            Response.Listener<JSONObject> { response ->
-                /* Successfully called graph, process data and send to UI */
-                Log.d(TAG, "Response: $response")
-                displayGraphResult(response)
-            },
-            Response.ErrorListener { error ->
-                Log.d(TAG, "Error: $error")
-                displayError(error)
-            })
+        val task = GraphAsync(this)
+        task.execute(authenticationResult.accessToken, msgraph_url.text.toString())
     }
 
     //
@@ -292,15 +326,15 @@ class SingleAccountModeFragment : Fragment() {
     /**
      * Display the graph response
      */
-    private fun displayGraphResult(graphResponse: JSONObject) {
-        txt_log.text = graphResponse.toString()
+    private fun displayGraphResult(graphResponse: String) {
+        txt_log.setText(graphResponse)
     }
 
     /**
      * Display the error message
      */
     private fun displayError(exception: Exception) {
-        txt_log.text = exception.toString()
+        txt_log.setText(exception.toString())
     }
 
     /**

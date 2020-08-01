@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     tools:context=".SingleAccountModeFragment">
 
-    <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
@@ -83,9 +83,9 @@
 
                     <EditText
                         android:id="@+id/msgraph_url"
-                        android:layout_height="wrap_content"
                         android:layout_width="match_parent"
-                        android:text="https://graph.microsoft.com/v1.0/me"
+                        android:layout_height="wrap_content"
+                        android:text="/me"
                         android:textSize="12sp" />
                 </LinearLayout>
             </LinearLayout>
@@ -187,16 +187,20 @@
                     android:layout_weight="5"
                     android:text="Get Graph Data Silently"
                     android:enabled="false"/>
+
             </LinearLayout>
 
 
-            <TextView
+            <EditText
                 android:id="@+id/txt_log"
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_marginTop="20dp"
+                android:layout_height="match_parent"
                 android:layout_weight="0.8"
-                android:text="Output goes here..." />
+                android:ems="10"
+                android:gravity="start|top"
+                android:hint="Output will go here"
+                android:inputType="textMultiLine"
+                android:textSize="14sp" />
 
         </LinearLayout>
     </LinearLayout>
