@@ -10,7 +10,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import com.android.volley.Response
+import com.google.gson.JsonObject
+import com.microsoft.graph.concurrency.ICallback
+import com.microsoft.graph.core.ClientException
 import com.microsoft.graph.logger.DefaultLogger
 import com.microsoft.graph.logger.LoggerLevel
 import com.microsoft.graph.models.extensions.IGraphServiceClient
@@ -21,7 +23,6 @@ import com.microsoft.identity.client.exception.MsalException
 import com.microsoft.identity.client.exception.MsalServiceException
 import com.microsoft.identity.client.exception.MsalUiRequiredException
 import kotlinx.android.synthetic.main.fragment_single_account_mode.*
-import org.json.JSONObject
 import java.lang.ref.WeakReference
 
 class SingleAccountModeFragment : Fragment() {
@@ -275,7 +276,7 @@ class SingleAccountModeFragment : Fragment() {
     companion object {
         class GraphAsync(context: SingleAccountModeFragment) : AsyncTask<String, String, String>() {
 
-            private val activityReference: WeakReference<SingleAccountModeFragment> = WeakReference(context)
+            private val fragmentReference: WeakReference<SingleAccountModeFragment> = WeakReference(context)
 
             override fun doInBackground(vararg p0: String?): String {
                 val authProvider = SimpleAuthProvider(p0[0]!!)
@@ -299,9 +300,28 @@ class SingleAccountModeFragment : Fragment() {
 
             override fun onPostExecute(result: String?) {
                 super.onPostExecute(result)
-                val activity = activityReference.get() ?: return
+                val fragment = fragmentReference.get() ?: return
 
-                result?.let { activity.displayGraphResult(it) }
+                result?.let {  fragment.displayGraphResult(it) }
+            }
+        }
+
+        class GraphCallBack(context: SingleAccountModeFragment): ICallback<JsonObject> {
+            private val fragmentReference: WeakReference<SingleAccountModeFragment> =
+                WeakReference(context)
+
+            override fun success(result: JsonObject) {
+                val fragment = fragmentReference.get() ?: return
+
+                // Graph sdk calls back from non-ui thread
+                fragment.activity?.runOnUiThread { result?.let { fragment.displayGraphResult(it.toString()) } }
+            }
+
+            override fun failure(ex: ClientException?) {
+                val fragment = fragmentReference.get() ?: return
+
+                //Graph sdk calls back from non-ui thread
+                fragment.activity?.runOnUiThread { ex?.let { fragment.displayError(ex) } }
             }
         }
     }
@@ -310,8 +330,31 @@ class SingleAccountModeFragment : Fragment() {
      * Make an HTTP request to obtain MSGraph data
      */
     private fun callGraphAPI(authenticationResult: IAuthenticationResult) {
-        val task = GraphAsync(this)
-        task.execute(authenticationResult.accessToken, msgraph_url.text.toString())
+        try {
+            val authProvider = SimpleAuthProvider(authenticationResult.accessToken)
+
+            val logger: DefaultLogger = DefaultLogger()
+            logger.loggingLevel = LoggerLevel.DEBUG
+
+
+            val graphClient: IGraphServiceClient =
+                GraphServiceClient.builder().authenticationProvider(authProvider)
+                    .logger(logger)
+                    .buildClient()
+            graphClient.customRequest(msgraph_url.text.toString()).buildRequest()
+                .get(GraphCallBack(this))
+        }
+        catch (ex: Exception){
+            displayError(ex)
+        }
+
+        /*
+         * This section below is for calling the Graph using the sdk synchronous path
+         * Comment/Remove the previous code and uncomment below to execute that path
+         */
+
+        //val task = GraphAsync(this)
+        //task.execute(authenticationResult.accessToken, msgraph_url.text.toString())
     }
 
     //
